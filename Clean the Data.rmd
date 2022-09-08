@@ -1,0 +1,36 @@
+---
+title: "Clean the Data"
+author: "memrekus"
+date: "6/2/2022"
+output: html_document
+---
+
+__Cleaning the data from the errors__
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Libraries
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+library("data.table")
+library("dplyr")
+library("tidyverse")
+
+```

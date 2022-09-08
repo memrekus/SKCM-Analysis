@@ -1,0 +1,296 @@
+---
+title: "tcga-skcm-others"
+author: "memrekus"
+date: "6/27/2022"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Load Libraries
+
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+library("data.table")
+library("dplyr")
+library("tidyverse")
+library("readr")
+library("Rsamtools")
+library("rtracklayer")
+library("AnnotationHub")
+library("ggplot2")
+
+```
+
+
+```{r, eval=FALSE}
+
+
+
+```
+
+
+
+#Create normalization function
+
+
+```{r}
+
+RNA_normalize = function(
+  tcga_data,
+  condition_variable,
+  reference_group=NULL){
+
+  design_factor = colData(tcga_data)[, condition_variable, drop=T]
+
+  group = factor(design_factor)
+  if(!is.null(reference_group)){group = relevel(group, ref=reference_group)}
+
+  design = model.matrix(~ group)
+
+  dge = DGEList(counts=assay(tcga_data),
+                 samples=colData(tcga_data),
+                 genes=as.data.frame(rowData(tcga_data)))
+
+  # filtering
+  keep = filterByExpr(dge,design)
+  dge = dge[keep,,keep.lib.sizes=FALSE]
+  rm(keep)
+
+  # Normalization (TMM followed by voom)
+  dge = calcNormFactors(dge)
+  v = voom(dge, design, plot=F)
+
+  # Fit model to data given design
+  fit = lmFit(v, design)
+  fit = eBayes(fit)
+
+  # Show top genes
+  topGenes = topTable(fit, coef=ncol(design), number=100, sort.by="p")
+
+  return(
+    list(
+      voomObj=v, # normalized data
+      fit=fit, # fitted model and statistics
+      topGenes=topGenes # the 100 most differentially expressed genes
+    )
+  )
+}
+
+```
+
+
+#Apply the fuction
+
+
+```{r}
+
+RNANorm = RNA_normalize(
+  tcga_data=tcga_data,
+  condition_variable="definition",
+  reference_group= NULL
+)
+
+```
+
+
+#Data preparetion
+
+
+```{r}
+
+Norm_Data_miRNA<-type.convert(Normalized_Data_miRNA, as.is=TRUE)
+
+Norm_Data_miRNA<-DGEList(counts = Norm_Data_miRNA, lib.size =colSums(Norm_Data_miRNA))
+
+```
+
+
+#Create a cpm / log2 normalization 
+
+
+```{r}
+
+Norm_Data_miRNA<-cpm(Norm_Data_miRNA, normalized.lib.sizes = TRUE,
+       log = TRUE,prior.count = 1)
+
+Norm_Data_miRNA<-as.data.frame(Norm_Data_miRNA)
+
+```
+
+
+#Preprocess learning
+
+
+```{r}
+
+#https://rdrr.io/bioc/mAPKL/man/preprocess.html
+
+
+```
+
+
+#corelation calculate
+
+
+```{r}
+
+ggscatter(data = Normal_total, 
+          x="ENSG00000153563.16", 
+          y="ENSG00000188389.11",
+          add = "reg.line",
+          palette=c("orange","purple"),
+          add.params = list(color="black"),
+          conf.int=T)
+
+Normal_total$paper_RNASEQ.CLUSTER_CONSENHIER
+
+
+```
+
+
+#ggplot
+
+
+```{r}
+
+ggboxplot(Normal_total, x= "paper_RNASEQ.CLUSTER_CONSENHIER", y= "ENSG00000111537.5",
+          color = "black" , add="jitter" , fill = "paper_RNASEQ.CLUSTER_CONSENHIER",palette = "jco")+
+          stat_compare_means(comparisons=list(c("immune","keratin"),c("immune","MITF-low")))
+```
+
+
+#clinical data
+
+
+```{r}
+
+clin <- GDCquery_clinic("TCGA-SKCM", type = "clinical", save.csv = F)
+
+
+#Another way to retrieve Subtype data: 
+
+data_Subtype2 <- TCGAbiolinks::TCGAquery_subtype("SKCM")
+
+```
+
+
+#Formation of Array
+
+
+```{r}
+
+#s3 format
+
+s3Norm_total<-list(Normal_RNA,Normal_miRNA,Data_Subtype)
+
+names(s3Norm_total)<-c("Norm_RNAseq","miRNAseq","Subtype")
+
+#s4 format
+  
+s4Norm_total<-SummarizedExperiment(colData = DataFrame(Norm_Data_RNA,Data_Subtype),metadata = list(Data_miRNA))
+
+
+
+#Formation of Array
+
+
+
+#s3 format
+
+s3total<-list(Data_RNA,Data_miRNA,Data_Subtype)
+
+names(s3total)<-c("RNAseq","miRNAseq","Subtype")
+
+#s4 format
+  
+s4total<-SummarizedExperiment(colData = DataFrame(Data_RNA,Data_Subtype),metadata = list(Data_miRNA))
+
+a <- SummarizedExperiment(assays=)
+
+```
+
+
+#Gencode annotation
+
+
+```{r}
+
+x <- assay(Big_Data_RNA)
+
+gtf_v22 <- rtracklayer::import('Supplementary files/gencode.v22.annotation.gtf')
+
+source("Supplementary files/Scripts/gtf_v22.R")
+
+x=ann(x,gtf_v22)
+
+keep <- rowSums(cpm(x))
+x <- as.matrix(x[keep,])
+
+x<-as.data.frame(x)
+
+rm(Big_Data_RNA,query_RNA)
+
+```
+
+
+#check
+
+
+```{r}
+
+# know the data dataset
+# are there duplicates?
+# are there multiple samples types from the same patient
+# RNAseq data vs miRNAseq check commonality and ensure the merge looks ok (numbers vs NAs)
+
+# colnames(Data_miRNA) %in% colnames(total)
+
+#all(colnames(Data_miRNA) %in% colnames(total))
+
+# total$Row.names[1]
+
+# length(intersect(rownames(Data_RNA), rownames(Data_Subtype)))
+
+# length(intersect(rownames(Data_RNA), Data_miRNA$Row.names))
+
+# length(intersect(substr(rownames(Data_RNA),1,16), substr(Data_miRNA$Row.names, 1,16)))
+
+# which(duplicated(Data_Subtype$patient))
+
+# debug(test_fun)
+
+```
+
+
+#gene annotation
+
+
+```{r}
+
+gencodes<-tcga_data@rowRanges@elementMetadata@listData[["gene_name"]]
+
+a<-assay(tcga_data)
+
+rownames(a)<- gencodes
+
+```
+

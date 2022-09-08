@@ -1,0 +1,157 @@
+---
+title: "Download the Data"
+author: "memrekus"
+date: "6/2/2022"
+output: html_document
+---
+
+__Downloading the RNAseq, miRNAseq and Subtype data from TCGA Database__
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Libraries
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+library("data.table")
+library("dplyr")
+library("tidyverse")
+library("readr")
+library("Rsamtools")
+library("rtracklayer")
+library("AnnotationHub")
+library("ggplot2")
+
+```
+
+
+#Download and prepare RNAseq data
+
+
+```{r}
+
+query_RNA <- GDCquery(
+  
+  project = "TCGA-SKCM",
+                      
+  data.category = "Transcriptome Profiling",
+  
+  experimental.strategy = "RNA-Seq",
+  
+  workflow.type = "STAR - Counts",
+  
+  data.type = "Gene Expression Quantification")
+
+GDCdownload(query_RNA)
+
+Big_Data_RNA<-GDCprepare(query_RNA)
+
+rm(query_RNA)
+
+Data_RNA<-assay(Big_Data_RNA)
+
+Data_RNA<-as.data.frame(Data_RNA)
+
+Data_RNA<-as.data.frame(t(Data_RNA))
+
+rownames(Data_RNA)[1:473]<-substr((rownames(Data_RNA)),1,16)
+
+save(Data_RNA, file="Data_RNA.Rda")
+
+```
+
+
+#Download and prepare miRNAseq data
+
+
+```{r}
+
+query_miRNA <- GDCquery(
+  
+  project = "TCGA-SKCM",
+   
+  data.category = "Transcriptome Profiling",
+
+  experimental.strategy = "miRNA-Seq",
+   
+  workflow.type = "BCGSC miRNA Profiling",
+
+  data.type = "miRNA Expression Quantification")
+  
+GDCdownload(query_miRNA)
+
+Data_miRNA<-GDCprepare(query_miRNA)
+
+rm(query_miRNA)
+
+Data_miRNA<-Data_miRNA%>%select(contains("miRNA_ID"),
+                    starts_with("read_count"))
+
+Data_miRNA<-as.data.frame(t(Data_miRNA))
+
+colnames(Data_miRNA) <- unlist(Data_miRNA[1,])
+
+Data_miRNA <- Data_miRNA[-1,]
+
+rownames(Data_miRNA)[1:452]<-substr((rownames(Data_miRNA)),12,99)
+
+Data_miRNA <- cbind(Row.names = rownames(Data_miRNA), Data_miRNA)
+
+Data_miRNA <- Data_miRNA[,-1]
+
+rownames(Data_miRNA)[1:452]<-substr((rownames(Data_miRNA)),1,16)
+
+save(Data_miRNA, file="Data_miRNA.Rda")
+
+```
+
+
+#Download and prepare Subtype data
+
+
+```{r}
+
+Data_Subtype <- colData(Big_Data_RNA)
+
+Data_Subtype <- data.frame(colData(Big_Data_RNA))
+
+rownames(Data_Subtype)[1:473]<-substr((rownames(Data_Subtype)),1,16)
+
+rm(Big_Data_RNA)
+
+saveRDS(Data_Subtype, file="Data_Subtype.Rds")
+
+clin <- GDCquery_clinic("TCGA-SKCM", type = "clinical", save.csv = F)
+
+#Another way to retrieve Subtype data: 
+
+data_Subtype2 <- TCGAbiolinks::TCGAquery_subtype("SKCM")
+
+```
+
+
+#R session info
+
+
+```{r}
+
+sessionInfo()
+
+```
+

@@ -1,0 +1,329 @@
+---
+title: "TCGA-SKCM data"
+author: "Muhammet Emre KUŞ"
+date: "07 April 2022"
+output: html_document
+---
+
+# Summary of the dataset
+
+__Project ID:TCGA-SKCM, 
+dbGaP Study Accession:	phs000178,\
+Name:	Skin Cutaneous Melanoma,\
+Disease Type:	Nevi and Melanomas,\
+Primary Site,	Skin,\
+Program:	TCGA. 
+[visit the website](https://portal.gdc.cancer.gov/projects/TCGA-SKCM)__
+
+# For General Chunk Commands
+
+```{r setup, include=TRUE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+#Load Libraries
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+
+```
+
+#Show the all TCGA projects
+
+```{r}
+
+# GDCprojects = getGDCprojects()
+# 
+# GDCprojects[c("project_id", "name")]
+
+```
+
+#Get details about the project
+
+```{r}
+
+TCGAbiolinks:::getProjectSummary("TCGA-SKCM")
+
+```
+
+#Querying RNA-seq data from project
+
+```{r}
+
+query <- GDCquery(
+  
+  project = "TCGA-SKCM",
+                      
+  data.category = "Transcriptome Profiling",
+  
+  workflow.type = "STAR - Counts",
+  
+  data.type = "Gene Expression Quantification")
+
+```
+
+#Querying Clinical Metadata from project
+
+```{r}
+
+clin <- GDCquery_clinic("TCGA-SKCM", type = "clinical", save.csv = F)
+
+```
+
+#Visualize the results in a better way 
+
+```{r}
+
+lihc_res = getResults(query)
+
+colnames(lihc_res)
+
+dim(lihc_res)
+
+```
+
+#Show some spesific information
+
+```{r}
+
+head(lihc_res$sample_type)
+
+lihc_res$sample_type1<-factor(lihc_res$sample_type,levels=c("Metastatic","Primary Tumor","Additional Metastatic","Solid Tissue Normal"))
+
+summary(lihc_res$sample_type1)
+
+```
+
+#GDC Download
+
+```{r}
+
+GDCdownload(
+  query,
+  method = "api",
+  files.per.chunk = 10
+)
+
+```
+
+#Load the actual RNASeq
+
+```{r}
+
+tcga_data <- GDCprepare(query)
+
+dim(tcga_data)
+
+head(colnames(colData(tcga_data)))
+
+tail(rownames(rowData(tcga_data)))
+
+assays(tcga_data)
+
+```
+
+#Exploring the Data
+
+```{r}
+
+table(tcga_data@colData$vital_status)
+
+table(tcga_data@colData$age_at_index)
+
+table(tcga_data@colData$gender)
+
+```
+
+#Gene Expression Matrices
+
+```{r}
+
+dim(assay(tcga_data))
+
+head(assay(tcga_data)[,1:10])
+
+head(assay(tcga_data)[,1:10])
+
+```
+
+#Save the Data
+
+```{r}
+
+saveRDS(object = tcga_data,
+        file = "tcga_data.RDS",
+        compress = FALSE)
+
+```
+
+#Load the Data 
+
+```{r}
+
+tcga_data = readRDS(file = "tcga_data.RDS")
+
+```
+
+#RNASeq Normalization
+
+```{r}
+
+limma_pipeline = function(
+  tcga_data,
+  condition_variable,
+  reference_group=NULL){
+
+  design_factor = colData(tcga_data)[, condition_variable, drop=T]
+
+  group = factor(design_factor)
+  if(!is.null(reference_group)){group = relevel(group, ref=reference_group)}
+
+  design = model.matrix(~ group)
+
+  dge = DGEList(counts=assay(tcga_data),
+                 samples=colData(tcga_data),
+                 genes=as.data.frame(rowData(tcga_data)))
+
+  # filtering
+  keep = filterByExpr(dge,design)
+  dge = dge[keep,,keep.lib.sizes=FALSE]
+  rm(keep)
+
+  # Normalization (TMM followed by voom)
+  dge = calcNormFactors(dge)
+  v = voom(dge, design, plot=TRUE)
+
+  # Fit model to data given design
+  fit = lmFit(v, design)
+  fit = eBayes(fit)
+
+  # Show top genes
+  topGenes = topTable(fit, coef=ncol(design), number=100, sort.by="p")
+
+  return(
+    list(
+      voomObj=v, # normalized data
+      fit=fit, # fitted model and statistics
+      topGenes=topGenes # the 100 most differentially expressed genes
+    )
+  )
+}
+
+```
+
+#classification
+
+```{r}
+
+limma_res = limma_pipeline(
+  tcga_data=tcga_data,
+  condition_variable="sample_type",
+  reference_group="Metastatic"
+)
+
+```
+
+#Save the object
+
+```{r}
+
+saveRDS(object = limma_res,
+        file = "limma_res.RDS",
+        compress = FALSE)
+
+```
+
+#grouping patients by gender
+
+```{r}
+
+gender_limma_res = limma_pipeline(
+  tcga_data=tcga_data,
+  condition_variable="gender",
+  reference_group="female"
+)
+
+```
+
+#use as class for grouping the samples
+
+```{r}
+
+clinical_data = colData(tcga_data)
+
+group = factor(clinical_data$definition)
+
+group = relevel(group, ref="Metastatic")
+
+summary(group)
+```
+
+#Create design matrix
+
+```{r}
+
+design = model.matrix(~group)
+head(design)
+
+```
+
+#remove genes, which have low amount of counts
+
+```{r}
+
+dge = DGEList( # creating a DGEList object
+  counts=assay(tcga_data),
+  samples=colData(tcga_data),
+  genes=as.data.frame(rowData(tcga_data)))
+
+# filtering
+keep = filterByExpr(dge,design) # defining which genes to keep
+
+dge = dge[keep,,keep.lib.sizes=FALSE] # filtering the dge object
+
+rm(keep) #  use rm() to remove objects from memory if you don't need them anymore
+
+```
+
+#voom
+
+```{r}
+
+dge = calcNormFactors(dge,method="TMM")
+
+v = voom(dge,design,plot=TRUE)
+
+fit = lmFit(v, design)
+
+fit = eBayes(fit)
+
+topGenes = topTable(fit, coef=1, sort.by="p")
+
+print(topGenes)
+
+```
+
+#sessioninfo
+
+```{r}
+
+sessionInfo()
+
+```
+

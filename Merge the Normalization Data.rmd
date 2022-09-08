@@ -1,0 +1,102 @@
+---
+title: "Merge the Normalization Data"
+author: "memrekus"
+date: "6/8/2022"
+output: html_document
+---
+
+
+__Merging the RNAseq, miRNAseq and Subtype data__
+
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Load Libraries
+
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+library("data.table")
+library("dplyr")
+library("tidyverse")
+library("Rsamtools")
+library("rtracklayer")
+library("AnnotationHub")
+
+```
+
+
+#Loading the prepared data
+
+
+```{r}
+
+Normal_RNA<-readRDS(file='Normal_RNA.Rds')
+
+Normal_miRNA<-readRDS(file='Normal_miRNA.Rds')
+
+Data_Subtype<-readRDS(file='Data_Subtype.Rds')
+
+```
+
+
+#Binding the data to each other
+
+
+```{r}
+
+Normal_total<-merge(x=Normal_RNA,y=Data_Subtype,by=0, all=TRUE)
+
+d <- Normal_miRNA
+
+Row.names <- rownames(d)
+
+rownames(d) <- NULL
+
+Normal_miRNA <- cbind(Row.names,d)
+
+rm(d,Row.names)
+
+Normal_total= Normal_total %>% left_join(Normal_miRNA,by ="Row.names")
+
+#total[is.na(total)] <- 0                 # replace NA values
+
+x <- Normal_total[,-1]
+
+rownames(x) <- Normal_total[,1]
+
+Normal_total<-x
+
+rm(x)
+
+saveRDS(Normal_total,file = "Normal_total.Rds")
+
+```
+
+
+#Remove 
+
+
+```{r}
+
+rm(Normal_miRNA,Normal_RNA,Data_Subtype)
+
+```
+

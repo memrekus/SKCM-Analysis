@@ -1,0 +1,185 @@
+---
+title: "tcga_skcm2"
+author: "memrekus"
+date: "4/18/2022"
+output: html_document
+---
+
+#Summary of the Project
+
+__Immune genes:
+CD3E, CD8A, CD4, FOXP3, IFNG, GZMB, PDCD1, LAG3, CTLA4, CD274 (PD-L1), TOX2, TIM3, HAVCR
+
+Goal:
+Identify miRNAs and lncRNAs that can regulate the same immune-associated gene (possibly by a competing endogenous RNA mechanism)__
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Libraries
+
+```{r}
+
+library("TCGAbiolinks")
+library("limma")
+library("edgeR")
+library("glmnet")
+library("factoextra")
+library("FactoMineR")
+library("caret")
+library("SummarizedExperiment")
+library("gplots")
+library("survival")
+library("survminer")
+library("RColorBrewer")
+library("gProfileR")
+library("genefilter")
+library("data.table")
+library("dplyr")
+library("tidyverse")
+```
+
+#Download and prepare RNAseq data
+
+```{r}
+
+query_RNA <- GDCquery(
+  
+  project = "TCGA-SKCM",
+                      
+  data.category = "Transcriptome Profiling",
+  
+  experimental.strategy = "RNA-Seq",
+  
+  workflow.type = "STAR - Counts",
+  
+  data.type = "Gene Expression Quantification")
+
+GDCdownload(query_RNA)
+
+Data_RNA<-GDCprepare(query_RNA)
+
+rm(query_RNA)
+
+RNA_Assay<-assay(Data_RNA)
+
+RNA_Assay<-as.data.frame(RNA_Assay)
+
+RNA_Assay<-as.data.frame(t(RNA_Assay))
+
+Subtype_RNA_Data<-Data_RNA$paper_MUTATIONSUBTYPES
+
+Subtype_RNA_Data<-as.data.frame(Subtype_RNA_Data)
+
+rm(Data_RNA)
+```
+
+#Download and prepare miRNAseq data
+
+```{r}
+
+query_miRNA <- GDCquery(
+  
+  project = "TCGA-SKCM",
+   
+  data.category = "Transcriptome Profiling",
+
+  experimental.strategy = "miRNA-Seq",
+   
+  workflow.type = "BCGSC miRNA Profiling",
+
+  data.type = "miRNA Expression Quantification")
+  
+GDCdownload(query_miRNA)
+
+Data_miRNA<-GDCprepare(query_miRNA)
+
+rm(query_miRNA)
+
+Data_miRNA<-Data_miRNA%>%select(contains("miRNA_ID"),
+                    starts_with("read_count"))
+
+Data_miRNA<-as.data.frame(t(Data_miRNA))
+```
+
+#Download clinical subtype data (including survival outcomes)
+
+```{r}
+
+query_clinical <- GDCquery(
+  
+  project = "TCGA-SKCM",
+                      
+  data.category = "Clinical",
+  
+  data.type = "Clinical Supplement")
+
+GDCdownload(query_clinical)
+
+Data_clinical<-GDCprepare(query_clinical)
+
+# clin <- GDCquery_clinic("TCGA-SKCM", type = "clinical", save.csv = F)
+
+rm(query_clinical)
+
+Data_clinical<-Data_clinical$clinical_patient_skcm
+
+Data_clinical<-as.data.frame(Data_clinical)
+
+Survival_outcome<-Data_clinical$vital_status
+
+Survival_outcome<-as.factor(Survival_outcome)
+
+Survival_outcome<-as.data.frame(Survival_outcome)
+
+summary(Survival_outcome)
+
+```
+
+#Data Merging
+
+```{r}
+
+rownames(Data_miRNA)[1:453]<-substr((rownames(Data_miRNA)),12,99)
+
+
+> View(query_RNA)
+> View(query_RNA[[1]][[1]])
+> View(Data_RNA)
+Loading required package: maftools
+> df <- colData(Data_RNA)
+> df <- data.frame(colData(Data_RNA))
+> st <- TCGAbiolinks::TCGAquery_subtype("SKCM")
+skcm subtype information from:doi:10.1016/j.cell.2015.05.044
+> View(df)
+> View(st)
+> setdiff(df$patient, st$patient)
+
+```
+
+
+#Calculate pairwise correlations between immune genes and lncRNAs
+
+```{r}
+
+immune_genes<-grep("CD3E|CD8A|CD4|FOXP3|IFNG|GZMB|CD274|PDCD1|CTLA4|TOX2|TIM3|HAVCR|LAG3",gene_cols,value = T,ignore.case = T)
+
+cor.test(trees$Girth,trees$Height)
+
+```
+
+#Calculate pairwise correlations between immune genes and miRNAs
+
+```{r}
+
+cor(x, y, method = c("pearson"))
+cor.test(x, y, method=c("spearman"))
+
+immune_genes<-("CD3E|CD8A|CD4|FOXP3|IFNG|GZMB|CD274|PDCD1|CTLA4|TOX2|TIM3|HAVCR|LAG3")
+
+cor(RNA_Assay$,Data_miRNA)
+
+```
+
+
